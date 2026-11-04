@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, List, Optional
 
 class CustomerData(BaseModel):
     gender: Literal['Male', 'Female']
@@ -53,7 +53,13 @@ class CustomerData(BaseModel):
         }
     }
 
+class FactorImpact(BaseModel):
+    feature: str
+    impact: float 
+
 class PredictionResponse(BaseModel):
     churn_prediction: int
     churn_probability: float
     status: str
+    top_risk_drivers: List[FactorImpact]
+    top_retention_drivers: List[FactorImpact]
