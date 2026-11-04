@@ -131,6 +131,7 @@ scikit-learn==1.9.1
 scipy==1.17.1
 seaborn==0.13.2
 semantic-version==2.10.0
+shap>=0.44.0
 shellingham==1.5.4
 six==1.17.0
 skops==0.16.0
