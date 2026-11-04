@@ -52,4 +52,5 @@ jobs:
             az containerapp update \
               --name telco-churn-api \
               --resource-group churn-ml-rg \
-              --image ${{ steps.prep.outputs.tag }}
+              --image ${{ steps.prep.outputs.tag }} \
+              --revision-suffix "run-${{ github.run_number }}-${{ github.run_attempt }}"
