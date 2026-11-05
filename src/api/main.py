@@ -199,6 +199,84 @@ def run_ui_prediction(
     return result_text, agent_plan
 
 
+def run_shap_counterfactual_simulation(
+    gender, SeniorCitizen, Partner, Dependents, PhoneService, MultipleLines,
+    InternetService, OnlineSecurity, OnlineBackup, DeviceProtection, TechSupport,
+    StreamingTV, StreamingMovies, Contract, PaperlessBilling, PaymentMethod,
+    tenure, MonthlyCharges, TotalCharges,
+):
+    payload = {
+        "gender": gender,
+        "SeniorCitizen": 1 if SeniorCitizen == "Yes" else 0,
+        "Partner": Partner,
+        "Dependents": Dependents,
+        "PhoneService": PhoneService,
+        "MultipleLines": MultipleLines,
+        "InternetService": InternetService,
+        "OnlineSecurity": OnlineSecurity,
+        "OnlineBackup": OnlineBackup,
+        "DeviceProtection": DeviceProtection,
+        "TechSupport": TechSupport,
+        "StreamingTV": StreamingTV,
+        "StreamingMovies": StreamingMovies,
+        "Contract": Contract,
+        "PaperlessBilling": PaperlessBilling,
+        "PaymentMethod": PaymentMethod,
+        "tenure": int(tenure),
+        "MonthlyCharges": float(MonthlyCharges),
+        "TotalCharges": float(TotalCharges),
+    }
+
+    input_df = pd.DataFrame([payload])
+    orig_proba = float(pipeline.predict_proba(input_df)[:, 1][0])
+
+    if orig_proba < THRESHOLD:
+        return "✅ **Account in Good Standing**: Customer is already at low churn risk. No countermeasures required."
+
+    risk_drivers, _ = extract_shap_factors(input_df)
+
+    sim_payload = payload.copy()
+    applied_actions = []
+
+    for item in risk_drivers:
+        feat = item["feature"]
+        if "Contract" in feat and sim_payload["Contract"] == "Month-to-month":
+            sim_payload["Contract"] = "One year"
+            applied_actions.append(f"**{feat}** ➔ Switched from Month-to-month to **One year contract**")
+        elif "OnlineSecurity" in feat and sim_payload["OnlineSecurity"] != "Yes":
+            sim_payload["OnlineSecurity"] = "Yes"
+            applied_actions.append(f"**{feat}** ➔ Activated complimentary **Online Security**")
+        elif "TechSupport" in feat and sim_payload["TechSupport"] != "Yes":
+            sim_payload["TechSupport"] = "Yes"
+            applied_actions.append(f"**{feat}** ➔ Activated complimentary **Tech Support**")
+        elif "Electronic check" in feat:
+            sim_payload["PaymentMethod"] = "Bank transfer (automatic)"
+            applied_actions.append(f"**{feat}** ➔ Migrated to **Bank transfer (automatic)**")
+
+    has_price_or_tenure = any("tenure" in d["feature"] or "Charges" in d["feature"] for d in risk_drivers)
+    if has_price_or_tenure and sim_payload["MonthlyCharges"] > 30:
+        old_charge = sim_payload["MonthlyCharges"]
+        new_charge = round(old_charge * 0.85, 2)
+        sim_payload["MonthlyCharges"] = new_charge
+        applied_actions.append(f"**Tenure / Spend sensitivity** ➔ Applied **15% discount** (${old_charge} ➔ ${new_charge}/mo)")
+
+    new_proba = float(pipeline.predict_proba(pd.DataFrame([sim_payload]))[:, 1][0])
+    delta = new_proba - orig_proba
+    status = "✅ **Successfully shifted to Safe / Loyal Zone!**" if new_proba < THRESHOLD else "⚠️ **Risk reduced, but requires further action.**"
+
+    actions_md = "\n".join([f"- {a}" for a in applied_actions]) if applied_actions else "- No actionable SHAP drivers found to alter."
+
+    return f"""### 🧪 Counterfactual Simulation (SHAP Auto-Fix)
+- **Original Churn Risk:** `{orig_proba:.2%}` 🚨
+- **Simulated Churn Risk:** `{new_proba:.2%}` ✅
+- **Risk Delta:** `{delta:+.2%}` 📉
+
+**Automated Remediation Actions:**
+{actions_md}
+
+**Impact Status:** {status}
+"""
+
 with gr.Blocks(title="Customer Churn AI") as demo:
     gr.Markdown(
         """
@@ -318,6 +396,10 @@ with gr.Blocks(title="Customer Churn AI") as demo:
                 "*Retention recommendations will appear here automatically if the risk threshold is reached.*"
             )
 
+            gr.Markdown("---")
+            sim_btn = gr.Button("  Simulate SHAP Countermeasures", variant="secondary")
+            sim_output = gr.Markdown("*Click above to mathematically simulate resolving the top SHAP drivers.*")
+
     submit_btn.click(
         fn=run_ui_prediction,
         inputs=[
@@ -342,6 +424,17 @@ with gr.Blocks(title="Customer Churn AI") as demo:
             total_charges,
         ],
         outputs=[output_markdown, agent_markdown],
+    )
+
+    sim_btn.click(
+        fn=run_shap_counterfactual_simulation,
+        inputs=[
+            gender, senior, partner, dependents, phone, multiple_lines,
+            internet, online_sec, backup, device_prot, tech_supp,
+            stream_tv, stream_mov, contract, paperless, payment_method,
+            tenure, monthly_charges, total_charges,
+        ],
+        outputs=sim_output,
     )
 
 app = gr.mount_gradio_app(app, demo, path="/ui")
