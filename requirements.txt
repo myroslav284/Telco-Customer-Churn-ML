@@ -44,6 +44,7 @@ graphql-core==3.2.13
 graphql-relay==3.2.0
 great-expectations==1.24.1
 groovy==0.1.2
+groq==1.7.0
 h11==0.16.0
 hf-gradio==0.4.1
 hf-xet==1.7.0
